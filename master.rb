@@ -1,10 +1,11 @@
+require 'data_node'
+
 class Master
-  require 'data_node'
   
   def initialize
     @data_nodes = Array.new
     @unique_id = 0;
-    @the_queue = Queue.new
+    @the_queue = Array.new 
     @pending_enq = Hash.new
     @pending_deq = Hash.new
   end
@@ -28,7 +29,7 @@ class Master
   #finalize enqueue.  Put this id on the actual queue.
   def finalize_enqueue(id)
     @pending_enq.delete(id)
-    @the_queue.enq(id)
+    @the_queue << id
   end
   
   #pending dequeue.  Grab an id from the queue, and
@@ -37,7 +38,7 @@ class Master
     if @the_queue.empty?
       return nil
     else
-      deq_id = @the_queue.deq
+      deq_id = @the_queue.shift
       deq_node = @data_nodes[0]
       @pending_deq[deq_id] = deq_node 
       return [deq_id, deq_node]
@@ -51,16 +52,6 @@ class Master
     data_nodes = @pending_deq[id]
     @pending_deq.delete(id)
     data_nodes.delete_data(id)
-  end
-  
-  
-  
+  end  
 end
-
-
-
-
-
-
-
 

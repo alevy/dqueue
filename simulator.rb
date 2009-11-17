@@ -1,8 +1,8 @@
-class Simulator
-  
+require 'master'
+require 'client'
 
-  require 'master'
-  require 'client'
+class Simulator
+
   @master = Master.new
   @data_node = DataNode.new(@master)
   @client = Client.new(@master)
@@ -19,4 +19,5 @@ class Simulator
   puts @client.dist_dequeue
   puts @client.dist_dequeue
   puts @client.dist_dequeue
+
 end
