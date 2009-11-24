@@ -1,5 +1,6 @@
 require 'master'
 require 'client'
+require 'data_node'
 
 class Simulator
 
@@ -7,7 +8,7 @@ class Simulator
   @data_node = DataNode.new(@master)
   @client = Client.new(@master)
   
-  @master.add_node(@data_node)
+  @master.add_node(1, @data_node)
   
   @client.dist_enqueue("Item one!")
   @client.dist_enqueue("Item two!")

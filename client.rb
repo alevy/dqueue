@@ -28,4 +28,3 @@ class Client
   end
   
 end
-

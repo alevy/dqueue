@@ -1,6 +1,8 @@
 # Daniel Suskin
 # CSE550
 # double-ended queue
+
+# PRETTY SURE WE DON'T NEED THIS
 class Deque
     @head
     @tail

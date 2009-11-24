@@ -1,3 +1,5 @@
+require 'rpc'
+
 class DataNode
   
   def initialize(master)
@@ -18,6 +20,21 @@ class DataNode
   #delete the given data item
   def delete_data(key)
     @data.delete(key)
+  end
+  
+end
+
+class MasterDummy < RPC::Dummy
+  def add_node(id, node)
+    send_msg(:add_node, id, {:host => @host, :port => @port})
+  end
+end
+
+class DataNodeServer < RPC::Server
+  
+  def initialize(master, host, port, transport = RPC::Transport::UDPTransport.new)
+    wrapper = RPC::Wrapper.new(master, :add_data, :get_data, :delete_data)
+    super(transport, wrapper, host, port)
   end
   
 end
