@@ -16,7 +16,7 @@ class Client
   #remove an item from the distributed queue.
   def dist_dequeue
     info = @master_node.start_dequeue
-    if info.nil?
+    if info[0].nil?
       return nil
     end
     data_id = info[0]

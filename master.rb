@@ -1,5 +1,5 @@
 require 'rpc'
-
+require 'data_node'
 class Master
   
   def initialize
@@ -8,6 +8,11 @@ class Master
     @logical_queue = Array.new 
     @pending_enqueues = Hash.new
     @pending_dequeues = Hash.new
+    
+    #For use in replication handling
+    @data_to_nodes = Hash.new
+    @nodes_to_data = Hash.new
+    @rep_thresh = 3
   end
   
   #add a data node that the master can use
@@ -25,6 +30,7 @@ class Master
     @pending_enqueues[ hashed_value ] = true
     
     nodes_to_contact = get_nodes_to_store hashed_value
+    add_replica(hashed_value, nodes_to_contact[0])
     
     return [hashed_value, nodes_to_contact]
   end
@@ -37,7 +43,7 @@ class Master
     hashed_value = @logical_queue.shift
     @pending_dequeues[ hashed_value ] = true
 
-    nodes_to_contact = get_nodes_to_store hashed_value
+    nodes_to_contact = find_nodes(hashed_value)
     
     return [hashed_value, nodes_to_contact]
   end
@@ -55,6 +61,7 @@ class Master
   def abort_enqueue(hashed_value)
     if @pending_enqueues.has_key?(hashed_value)
       @pending_enqueues.delete(hashed_value)
+      clear_replicas(hashed_value)
       # notify any nodes they can delete a waiting value
       
       return true
@@ -63,10 +70,17 @@ class Master
     end
   end
   
-  #finalize enqueue.  Put this id on the actual queue.
+  #finalize enqueue.  Put this id on the actual queue, and
+  #initialize necessary replicas.
   def finalize_enqueue(hashed_value)
       if @pending_enqueues.has_key?(hashed_value)
+        (@rep_thresh - 1).times do
+          replicate(hashed_value)
+        end
+        
         @logical_queue << hashed_value
+      
+        
         return true
       else
         return false
@@ -80,10 +94,13 @@ class Master
     if @pending_dequeues.has_key?(hashed_value)
       @pending_dequeues.delete(hashed_value)
       # notify nodes about dequeue so they can remove the data at some point
-      nodes_to_notify = get_nodes_to_store(hashed_value)
+      nodes_to_notify = find_nodes(hashed_value)
       nodes_to_notify.each do |current_node|
-      	current_node.delete_data(hashed_value)
-      end
+        current_node.delete_data(hashed_value)
+     end
+     
+     clear_replicas(hashed_value)
+     
       return true
     else
       return false
@@ -92,7 +109,70 @@ class Master
   
   def get_nodes_to_store(data_key)
       # look up nodes which store data associated with the given hash
+      #currently returns a single random node
       return [@data_nodes[@data_nodes.keys[(rand * @data_nodes.size).floor]]]
+  end
+  
+  #replicate the given item ID on an additional node
+  def replicate(item_id)
+    current_nodes = find_nodes(item_id)
+    target_node = next_replica
+    while(current_nodes.include?(target_node)) do
+      target_node = next_replica
+    end
+    
+    target_node.add_data(item_id, current_nodes[0].get_data(item_id))
+    add_replica(item_id, target_node)
+  end
+  
+ #find all nodes this item ID is currently stored on
+  def find_nodes(item_id)
+    return @data_to_nodes[item_id]
+    
+  end
+  
+  #choose the next node to replicate on
+  def next_replica
+    return @data_nodes[@data_nodes.keys[(rand * @data_nodes.size).floor]]
+  end
+
+  #replicate all data on a node
+  def replicate_node(node_id)
+    data_to_replicate = get_data_list(node_id)
+    data_to_replicate.each do |data_id|
+      replicate(data_id)
+    end
+  end
+
+  #get the list of data elements stored on this node
+  def get_data_list(node_id)
+    return @nodes_to_data[node_id]
+    
+  end
+
+  #mark this item as stored at this node
+  def add_replica(item_id, target_node)
+    if @nodes_to_data[target_node].nil?
+      @nodes_to_data[target_node] = [item_id]
+    else
+      @nodes_to_data[target_node] = @nodes_to_data[target_node] << item_id
+    end
+    
+    if @data_to_nodes[item_id].nil?
+      @data_to_nodes[item_id] = [target_node]
+    else
+      @data_to_nodes[item_id] = @data_to_nodes[item_id] << target_node
+    end
+  end
+  
+  #remove the metadata info about this item, it's no longer
+  #needed.
+  def clear_replicas(item_id)
+    nodes = find_nodes(item_id)
+    nodes.each do |node|
+      @nodes_to_data[node].delete(item_id)
+    end
+    @data_to_nodes.delete(item_id)
   end
 end
 
