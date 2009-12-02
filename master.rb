@@ -1,5 +1,6 @@
 require 'rpc'
 require 'data_node'
+require 'blizzard_logger'
 
 module DQueue
   module Master
@@ -12,24 +13,63 @@ module DQueue
         @pending_enqueues = Hash.new
         @pending_dequeues = Hash.new
         
+        @logger = BlizzardLogger.new
+        
         #For use in replication handling
         @data_to_nodes = Hash.new
         @nodes_to_data = Hash.new
         @rep_thresh = 3
       end
       
+      def recover_from_log
+        log_file = @logger.get_log_file
+        
+        log_file.each do |log_line|
+          log_line_words = log_line.split
+          
+          # TODO bad style for tightly integrating the 
+          # logger and master... can change later
+          operation_type = log_line_words[0]
+          queue_value = log_line_words[2]
+          
+          if operation_type == BlizzardLogger::ADD_NODE
+            # data nodes aren't actually serializable yet
+            # add_node log_line_words[1], log_line_words[2]
+          elsif operation_type == BlizzardLogger::START_ENQUEUE
+            start_enqueue queue_value, true
+          elsif operation_type == BlizzardLogger::FINALIZE_ENQUEUE
+            finalize_enqueue queue_value, true
+          elsif operation_type == BlizzardLogger::ABORT_ENQUEUE
+            abort_enqueue queue_value, true
+          elsif operation_type == BlizzardLogger::START_DEQUEUE
+            start_dequeue queue_value, true
+          elsif operation_type == BlizzardLogger::FINALIZE_DEQUEUE
+            finalize_dequeue queue_value, true
+          elsif operation_type == BlizzardLogger::ABORT_DEQUEUE
+            abort_dequeue queue_value, true
+          end
+        end
+      end
+      
       #add a data node that the master can use
-      def add_node(node_id, node)
+      def add_node(node_id, node, recovery_mode = false)
+        if !recovery_mode
+          @logger.log_add_node node_id, node
+        end
         @data_nodes[node_id] = node
       end
       
       #start enqueue.  Decide which data nodes to store on,
       #and return the unique ID for this data item.
-      def start_enqueue()
+      def start_enqueue(hashed_value = @unique_id, recovery_mode = false)
         # generate unique client key and send it to nodes,
         # or an approach that results in something similar
-        @unique_id = @unique_id + 1
-        hashed_value = @unique_id
+        @unique_id = [@unique_id + 1, hashed_value + 1].max
+        
+        if !recovery_mode
+          @logger.log_enqueue_start "enq" + hashed_value.to_s, hashed_value
+        end
+        
         @pending_enqueues[ hashed_value ] = true
         
         nodes_to_contact = get_nodes_to_store hashed_value
@@ -37,22 +77,31 @@ module DQueue
         
         return [hashed_value, nodes_to_contact]
       end
-
+    
       #start dequeue.  Grab an id from the queue, and
       #return that id along with the node to pull it from
-      def start_dequeue
+      def start_dequeue(hashed_value = @logical_queue.shift, recovery_mode = false)
         # generate unique client key and send it to nodes,
         # or an approach that results in something similar
-        hashed_value = @logical_queue.shift
-        @pending_dequeues[ hashed_value ] = true
-
+        
+        if !hashed_value.nil?
+          if !recovery_mode
+            @logger.log_dequeue_start "dq" + hashed_value.to_s, hashed_value
+          end
+          
+          @pending_dequeues[ hashed_value ] = true
+        end
+    
         nodes_to_contact = find_nodes(hashed_value)
         
         return [hashed_value, nodes_to_contact]
       end
       
-      def abort_dequeue(hashed_value)
+      def abort_dequeue(hashed_value, recovery_mode = false)
         if @pending_dequeues.has_key? hashed_value
+          if !recovery_mode
+            @logger.log_dequeue_abort "dq" + hashed_value.to_s, hashed_value
+          end
           @logical_queue.unshift(hashed_value)
           @pending_dequeues.delete hashed_value
           return true
@@ -61,8 +110,11 @@ module DQueue
         end
       end
       
-      def abort_enqueue(hashed_value)
+      def abort_enqueue(hashed_value, recovery_mode = false)
         if @pending_enqueues.has_key?(hashed_value)
+          if !recovery_mode
+            @logger.log_enqueue_abort "enq" + hashed_value.to_s, hashed_value
+          end
           @pending_enqueues.delete(hashed_value)
           clear_replicas(hashed_value)
           # notify any nodes they can delete a waiting value
@@ -75,40 +127,45 @@ module DQueue
       
       #finalize enqueue.  Put this id on the actual queue, and
       #initialize necessary replicas.
-      def finalize_enqueue(hashed_value)
+      def finalize_enqueue(hashed_value, recovery_mode = false)
           if @pending_enqueues.has_key?(hashed_value)
+            if !recovery_mode
+              @logger.log_enqueue_finalize "enq" + hashed_value.to_s, hashed_value
+            end
             (@rep_thresh - 1).times do
               replicate(hashed_value)
             end
             
             @logical_queue << hashed_value
-          
             
             return true
           else
             return false
           end
       end
-
+    
       #finalize dequeue.  Remove the given item id from
       #the pending dequeue list, and delete that data from
       #nodes on which it is stored.
-      def finalize_dequeue(hashed_value)
+      def finalize_dequeue(hashed_value, recovery_mode = false)
         if @pending_dequeues.has_key?(hashed_value)
+          if !recovery_mode
+            @logger.log_dequeue_finalize "dq" + hashed_value.to_s, hashed_value
+          end
           @pending_dequeues.delete(hashed_value)
           # notify nodes about dequeue so they can remove the data at some point
           nodes_to_notify = find_nodes(hashed_value)
           nodes_to_notify.each do |current_node|
             current_node.delete_data(hashed_value)
-         end
+          end
          
-         clear_replicas(hashed_value)
+          clear_replicas(hashed_value)
          
           return true
         else
           return false
         end
-      end
+      end  
       
       def get_nodes_to_store(data_key)
           # look up nodes which store data associated with the given hash
