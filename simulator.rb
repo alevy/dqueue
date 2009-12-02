@@ -2,6 +2,10 @@ require 'master'
 require 'client'
 require 'data_node'
 
+include DQueue::Master
+include DQueue::Client
+include DQueue::DataNode
+
 class Simulator
 
   @master = Master.new

@@ -1,4 +1,5 @@
 require 'socket'
+require 'timeout'
  
 module RPC
   module Transport
@@ -36,6 +37,49 @@ module RPC
         return result
       end
     end
+    
+    class TCPTransport
+    
+      TCP_RECV_TIMEOUT = 3
+      
+      def initialize(hash = {})
+        @timeout = hash[:timeout] || TCP_RECV_TIMEOUT
+        @serializer = hash[:serializer] || Marshal
+      end
+      
+      def bind(address, port)
+        @socket = TCPServer.new(address, port)
+      end
+      
+      def listen
+        session = @socket.accept
+        text = session.read
+        begin
+          result = yield(*@serializer.load(text))
+          session.write(@serializer.dump(result))
+        rescue
+          session.write(@serializer.dump($!))
+        end
+      end
+      
+      def send_msg(address, port, msg, *args)
+        socket = TCPSocket.new(address, port)
+        socket.write(@serializer.dump([msg,args]))
+        socket.close_write
+        begin  
+          timeout(@timeout) do
+            resp = socket.gets
+          end
+        rescue
+          raise "Connection Timed Out"
+        end
+        socket.close
+        result = @serializer.load(resp[0])
+        raise result if result.is_a?(Exception)
+        return result
+      end
+    end
+
   end
   
   class Wrapper
