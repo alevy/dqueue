@@ -9,6 +9,7 @@ class BlizzardLogger
   START_DEQUEUE = "START_DEQUEUE"
   FINALIZE_DEQUEUE = "FINALIZE_DEQUEUE"
   ABORT_DEQUEUE = "ABORT_DEQUEUE"
+  DELIMITER = "|"
   
   def initialize
     @log_file = File.new(@@log_file_name, "a+")
@@ -25,7 +26,7 @@ class BlizzardLogger
   def log_add_node(node_id, node)
     # node needs to be serializable to and from strings 
     # for this to be useful for recovery
-    log ADD_NODE, node_id.to_s + " " + node.to_s 
+    log ADD_NODE, node_id.to_s + DELIMITER + node.inspect#node["host"] + " " + node["port"] 
   end
   
   def log_enqueue_start(operation_id, enqueued_value)
@@ -54,10 +55,10 @@ class BlizzardLogger
     
   private
   def log(operation_type, message)
-    @log_file.puts(operation_type.to_s + " " + message)
+    @log_file.puts(operation_type.to_s + DELIMITER + message)
   end
   
   def log_queue_operation(operation_type, operation_id, value)
-    log operation_type, operation_id.to_s + " " + value.to_s
+    log operation_type, operation_id.to_s + DELIMITER + value.to_s
   end
 end

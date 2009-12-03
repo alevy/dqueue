@@ -1,5 +1,5 @@
 require 'rpc'
-require 'data_node'
+#require 'data_node'
 require 'blizzard_logger'
 
 module DQueue
@@ -28,7 +28,7 @@ module DQueue
         log_file = @logger.get_log_file
         
         log_file.each do |log_line|
-          log_line_words = log_line.split
+          log_line_words = log_line.split(Logger::DELIMITER)
           
           # TODO bad style for tightly integrating the 
           # logger and master... can change later
@@ -37,7 +37,8 @@ module DQueue
           
           if operation_type == BlizzardLogger::ADD_NODE
             # data nodes aren't actually serializable yet
-            # add_node log_line_words[1], log_line_words[2]
+            #add_node log_line_words[1], 
+            #  {:host => log_line_words[2], :port => log_line_words[3]}
           elsif operation_type == BlizzardLogger::START_ENQUEUE
             start_enqueue queue_value, true
           elsif operation_type == BlizzardLogger::FINALIZE_ENQUEUE

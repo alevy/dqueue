@@ -41,7 +41,7 @@ module DQueue
         return [data_id, nodes]
       end
 
-      def start_enqueue
+      def start_dequeue
         data_id, nodes = send_msg(:start_dequeue)
         nodes = nodes.map do |node|
           DataNodeDummy.new(RPC::Transport::TCPTransport.new, node[:host], node[:port])
