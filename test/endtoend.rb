@@ -1,10 +1,10 @@
-require 'data_node'
-require 'master'
-require 'client'
+require 'blizzard/data_node'
+require 'blizzard/master'
+require 'blizzard/client'
 require 'rpc'
 require 'test/unit'
 
-include DQueue
+include Blizzard
 include RPC
 include Transport
 
