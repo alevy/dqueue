@@ -5,6 +5,8 @@ module DQueue
   module Master
     class Master
       
+      attr_reader :data_nodes
+
       def initialize
         @data_nodes = Hash.new
         @unique_id = 0

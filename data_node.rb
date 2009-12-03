@@ -3,6 +3,9 @@ require 'rpc'
 module DQueue
   module DataNode
     class DataNode
+
+      attr_reader :master, :data      
+      
       def initialize(master)
         @data = Hash.new
         @master = master
@@ -27,14 +30,14 @@ module DQueue
 
     class MasterDummy < RPC::Dummy
       def add_node(id, node)
-        send_msg(:add_node, id, {:host => @host, :port => @port})
+        send_msg(:add_node, id, {:host => @localhost, :port => @localport})
       end
     end
 
     class DataNodeServer < RPC::Server
       
-      def initialize(master, host, port, transport = RPC::Transport::TCPTransport.new)
-        wrapper = RPC::Wrapper.new(master, :add_data, :get_data, :delete_data)
+      def initialize(data_node, host, port, transport = RPC::Transport::TCPTransport.new)
+        wrapper = RPC::Wrapper.new(data_node, :add_data, :get_data, :delete_data)
         super(transport, wrapper, host, port)
       end
       

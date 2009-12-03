@@ -16,6 +16,10 @@ module RPC
         @socket = UDPSocket.new
         @socket.bind(address, port)
       end
+
+      def close
+        @socket.close
+      end
       
       def listen
         text, sender = @socket.recvfrom(1024)
@@ -28,6 +32,7 @@ module RPC
       end
       
       def send_msg(address, port, msg, *args)
+        puts msg
         socket = @socket || UDPSocket.new
         socket.send(@serializer.dump([msg,args]), 0, address, port)
         resp = socket.recvfrom(1024) if select([socket], nil, nil, @timeout)
@@ -49,6 +54,10 @@ module RPC
       
       def bind(address, port)
         @socket = TCPServer.new(address, port)
+      end
+
+      def close
+        @socket.close
       end
       
       def listen
@@ -104,12 +113,14 @@ module RPC
   
   class Dummy
     
-    attr_reader :transport, :host, :port
+    attr_reader :transport, :host, :port, :localhost, :localport
     
-    def initialize(transport, host, port)
+    def initialize(transport, host, port, localhost = nil, localport = nil)
       @transport = transport
       @host = host
       @port = port
+      @localhost = localhost
+      @localport = localport
     end
     
     def method_missing(method, *args)
@@ -130,9 +141,15 @@ module RPC
     end
     
     def start
-      loop do
+      @continue = true
+      while @continue do
         @transport.listen {|method, args| @wrapper.send(method, *args)}
       end
+    end
+
+    def stop
+      @continue = false
+      transport.close
     end
   end
   
