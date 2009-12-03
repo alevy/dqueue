@@ -5,6 +5,7 @@ require 'blizzard_logger'
 module DQueue
   module Master
     class Master
+      attr_reader :data_nodes
       
       def initialize
         @data_nodes = Hash.new
@@ -12,14 +13,16 @@ module DQueue
         @logical_queue = Array.new 
         @pending_enqueues = Hash.new
         @pending_dequeues = Hash.new
+        @replicator = Replicator.new(self)
         
         @logger = BlizzardLogger.new
         
-        #For use in replication handling
-        @data_to_nodes = Hash.new
-        @nodes_to_data = Hash.new
-        @rep_thresh = 3
       end
+      
+      def get_heartbeat(node)
+        @replicator.get_heartbeat(node)
+      end
+    
       
       def recover_from_log
         log_file = @logger.get_log_file
@@ -57,6 +60,7 @@ module DQueue
           @logger.log_add_node node_id, node
         end
         @data_nodes[node_id] = node
+        @replicator.get_heartbeat(node)
       end
       
       #start enqueue.  Decide which data nodes to store on,
@@ -73,7 +77,7 @@ module DQueue
         @pending_enqueues[ hashed_value ] = true
         
         nodes_to_contact = get_nodes_to_store hashed_value
-        add_replica(hashed_value, nodes_to_contact[0])
+        @replicator.add_replica(hashed_value, nodes_to_contact[0])
         
         return [hashed_value, nodes_to_contact]
       end
@@ -92,7 +96,7 @@ module DQueue
           @pending_dequeues[ hashed_value ] = true
         end
     
-        nodes_to_contact = find_nodes(hashed_value)
+        nodes_to_contact = @replicator.find_nodes(hashed_value)
         
         return [hashed_value, nodes_to_contact]
       end
@@ -116,7 +120,7 @@ module DQueue
             @logger.log_enqueue_abort "enq" + hashed_value.to_s, hashed_value
           end
           @pending_enqueues.delete(hashed_value)
-          clear_replicas(hashed_value)
+          @replicator.clear_replicas(hashed_value)
           # notify any nodes they can delete a waiting value
           
           return true
@@ -132,8 +136,8 @@ module DQueue
             if !recovery_mode
               @logger.log_enqueue_finalize "enq" + hashed_value.to_s, hashed_value
             end
-            (@rep_thresh - 1).times do
-              replicate(hashed_value)
+            (@replicator.rep_thresh - 1).times do
+              @replicator.replicate(hashed_value)
             end
             
             @logical_queue << hashed_value
@@ -154,12 +158,12 @@ module DQueue
           end
           @pending_dequeues.delete(hashed_value)
           # notify nodes about dequeue so they can remove the data at some point
-          nodes_to_notify = find_nodes(hashed_value)
+          nodes_to_notify = @replicator.find_nodes(hashed_value)
           nodes_to_notify.each do |current_node|
             current_node.delete_data(hashed_value)
           end
          
-          clear_replicas(hashed_value)
+          @replicator.clear_replicas(hashed_value)
          
           return true
         else
@@ -173,6 +177,40 @@ module DQueue
           return [@data_nodes[@data_nodes.keys[(rand * @data_nodes.size).floor]]]
       end
       
+    end
+    
+    
+    
+   class Replicator
+  
+    attr_reader :rep_thresh
+    
+    def initialize(master)
+        @data_to_nodes = Hash.new
+        @nodes_to_data = Hash.new
+        @rep_thresh = 3
+        @master = master
+        @heartbeats = Hash.new
+        Thread.abort_on_exception = true
+        Thread.new{while true do sleep 10; check_heartbeats; end}
+    end
+    
+      def get_heartbeat(node)
+        @heartbeats[node] = Time.now
+      end
+      
+      def check_heartbeats
+        puts "checking heartbeats..."
+        @heartbeats.each do |key, value|
+          if Time.now - value > 10
+            puts "replicating node!"
+            replicate_node(key)
+            @heartbeats.delete(key)
+            puts "successfully replicated node"
+          end
+        end
+      end
+       
       #replicate the given item ID on an additional node
       def replicate(item_id)
         current_nodes = find_nodes(item_id)
@@ -193,7 +231,7 @@ module DQueue
       
       #choose the next node to replicate on
       def next_replica
-        return @data_nodes[@data_nodes.keys[(rand * @data_nodes.size).floor]]
+        return @master.data_nodes[@master.data_nodes.keys[(rand * @master.data_nodes.size).floor]]
       end
 
       #replicate all data on a node

@@ -6,6 +6,8 @@ module DQueue
       def initialize(master)
         @data = Hash.new
         @master = master
+        Thread.abort_on_exception = true
+        @heartbeat = Thread.new{while true do sleep 3; send_heartbeat; end}
       end
       
       # store a data item on this node.
@@ -21,6 +23,15 @@ module DQueue
       #delete the given data item
       def delete_data(key)
         @data.delete(key)
+      end
+      
+      def send_heartbeat
+        @master.get_heartbeat(self)
+      end
+      
+      def kill
+        @heartbeat.kill
+        @data = Hash.new
       end
       
     end
