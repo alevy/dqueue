@@ -32,11 +32,9 @@ module RPC
       end
       
       def send_msg(address, port, msg, *args)
-        puts msg
         socket = @socket || UDPSocket.new
         socket.send(@serializer.dump([msg,args]), 0, address, port)
-        resp = socket.recvfrom(1024) if select([socket], nil, nil, @timeout)
-        raise "Connection Timed Out" unless resp
+        resp = socket.recvfrom(1024)
         result = @serializer.load(resp[0])
         raise result if result.is_a?(Exception)
         return result
@@ -61,7 +59,11 @@ module RPC
       end
       
       def listen
-        session = @socket.accept
+        begin
+          session = @socket.accept_nonblock
+        rescue
+          retry
+        end
         text = session.read
         begin
           result = yield(*@serializer.load(text))
@@ -69,21 +71,23 @@ module RPC
         rescue
           session.write(@serializer.dump($!))
         end
+        session.close
       end
       
       def send_msg(address, port, msg, *args)
         socket = TCPSocket.new(address, port)
         socket.write(@serializer.dump([msg,args]))
         socket.close_write
+        resp = nil
         begin  
           timeout(@timeout) do
-            resp = socket.gets
+            resp = socket.read
           end
         rescue
           raise "Connection Timed Out"
         end
         socket.close
-        result = @serializer.load(resp[0])
+        result = @serializer.load(resp)
         raise result if result.is_a?(Exception)
         return result
       end
@@ -137,10 +141,12 @@ module RPC
     def initialize(transport, wrapper, address, port)
       @wrapper = wrapper
       @transport = transport
-      @transport.bind(address, port)
+      @address = address
+      @port = port
     end
     
     def start
+      @transport.bind(@address, @port)
       @continue = true
       while @continue do
         @transport.listen {|method, args| @wrapper.send(method, *args)}
@@ -149,7 +155,7 @@ module RPC
 
     def stop
       @continue = false
-      transport.close
+      @transport.close
     end
   end
   

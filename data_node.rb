@@ -43,6 +43,10 @@ module DQueue
       def add_node(id, node)
         send_msg(:add_node, id, {:host => @localhost, :port => @localport})
       end
+      
+      def get_heartbeat(node)
+        send_msg(:get_heartbeat, {:host => @localhost, :port => @localport})
+      end
     end
 
     class DataNodeServer < RPC::Server
