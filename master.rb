@@ -64,6 +64,11 @@ module DQueue
         @replicator.get_heartbeat(node)
       end
       
+      #remove a node
+      def remove_node(node)
+        @data_nodes.delete(@data_nodes.index(node))
+      end
+      
       #start enqueue.  Decide which data nodes to store on,
       #and return the unique ID for this data item.
       def start_enqueue(hashed_value = @unique_id, recovery_mode = false)
@@ -74,11 +79,9 @@ module DQueue
         if !recovery_mode
           @logger.log_enqueue_start "enq" + hashed_value.to_s, hashed_value
         end
-        
-        @pending_enqueues[ hashed_value ] = true
-        
+                
         nodes_to_contact = get_nodes_to_store hashed_value
-        @replicator.add_replica(hashed_value, nodes_to_contact[0])
+        @pending_enqueues[ hashed_value ] = nodes_to_contact[0]
         
         return [hashed_value, nodes_to_contact]
       end
@@ -137,11 +140,15 @@ module DQueue
             if !recovery_mode
               @logger.log_enqueue_finalize "enq" + hashed_value.to_s, hashed_value
             end
+     
+            @replicator.add_replica(hashed_value, @pending_enqueues[hashed_value])
             (@replicator.rep_thresh - 1).times do
               @replicator.replicate(hashed_value)
             end
             
             @logical_queue << hashed_value
+            
+            @pending_enqueues.delete(hashed_value)
             
             return true
           else
@@ -202,11 +209,19 @@ module DQueue
       
       def check_heartbeats
         puts "checking heartbeats..."
-        @heartbeats.each do |key, value|
+        @heartbeats.each do |node, value|
           if Time.now - value > 10
             puts "replicating node!"
-            replicate_node(key)
-            @heartbeats.delete(key)
+            @master.remove_node(node)
+            
+            data = get_data_list(node)
+            data.each do |element|
+              @data_to_nodes[element].delete(node)
+            end
+            @nodes_to_data.delete(node)
+             
+            replicate_node(node)
+            @heartbeats.delete(node)
             puts "successfully replicated node"
           end
         end
@@ -221,6 +236,8 @@ module DQueue
         end
         
         target_node.add_data(item_id, current_nodes[0].get_data(item_id))
+        
+        #TODO if the above line failed, re-start this method.
         add_replica(item_id, target_node)
       end
       
@@ -245,8 +262,11 @@ module DQueue
 
       #get the list of data elements stored on this node
       def get_data_list(node_id)
-        return @nodes_to_data[node_id]
-        
+        if @nodes_to_data[node_id].nil?
+          return []
+        else
+          return @nodes_to_data[node_id]
+        end
       end
 
       #mark this item as stored at this node

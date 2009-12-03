@@ -16,7 +16,7 @@ module DQueue
       end
       
       #get the given data item
-      def get_data(key)
+      def get_data(key)    
         return @data[key]
       end
       
