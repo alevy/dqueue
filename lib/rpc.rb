@@ -34,7 +34,9 @@ module RPC
       def send_msg(address, port, msg, *args)
         socket = @socket || UDPSocket.new
         socket.send(@serializer.dump([msg,args]), 0, address, port)
-        resp = socket.recvfrom(1024)
+        resp = timeout(@timeout) do
+          socket.recvfrom(2024)
+        end
         result = @serializer.load(resp[0])
         raise result if result.is_a?(Exception)
         return result
@@ -59,11 +61,7 @@ module RPC
       end
       
       def listen
-        begin
-          session = @socket.accept_nonblock
-        rescue
-          retry
-        end
+        session = @socket.accept
         text = session.read
         begin
           result = yield(*@serializer.load(text))
@@ -78,13 +76,8 @@ module RPC
         socket = TCPSocket.new(address, port)
         socket.write(@serializer.dump([msg,args]))
         socket.close_write
-        resp = nil
-        begin  
-          timeout(@timeout) do
-            resp = socket.read
-          end
-        rescue
-          raise "Connection Timed Out"
+        resp = timeout(@timeout) do
+          socket.read
         end
         socket.close
         result = @serializer.load(resp)

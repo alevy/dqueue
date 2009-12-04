@@ -19,9 +19,7 @@ module Blizzard
       #remove an item from the distributed queue.
       def dist_dequeue
         info = @master_node.start_dequeue
-        if info.nil?
-          return nil
-        end
+        return nil if info.nil?
         data_id = info[0]
         nodes = info[1]
         result = nodes[0].get_data(data_id)
@@ -43,8 +41,7 @@ module Blizzard
 
       def start_dequeue
         data_id, nodes = send_msg(:start_dequeue)
-        puts data_id
-        puts nodes.inspect
+        return nil if nodes.nil?
         nodes = nodes.map do |node|
           DataNodeDummy.new(RPC::Transport::TCPTransport.new, node[:host], node[:port])
         end

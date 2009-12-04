@@ -59,7 +59,6 @@ module Blizzard
      #find all nodes this item ID is currently stored on
     def find_nodes(item_id)
       return @data_to_nodes[item_id]
-      
     end
     
     #choose the next node to replicate on
