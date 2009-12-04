@@ -159,6 +159,9 @@ module Blizzard
     end
     
     class DataNodeDummy < RPC::Dummy
+      def replicate_data(key, node)
+        send_msg(:replicate_data, key, {:host => node.host, :port => node.port})
+      end
     end
 
     class MasterWrapper < RPC::Wrapper
