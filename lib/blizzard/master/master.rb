@@ -13,10 +13,12 @@ module Blizzard
         @logical_queue = Array.new 
         @pending_enqueues = Hash.new
         @pending_dequeues = Hash.new
-        @replicator = Replicator.new(self)
-        @rep_thresh = rep_thresh
         @logger = BlizzardLogger.new
+
+        @replicator = Replicator.new(self, @logger)
+        @rep_thresh = rep_thresh
         
+        #recover_from_log
       end
       
       def get_heartbeat(node)
@@ -37,8 +39,7 @@ module Blizzard
           
           if operation_type == BlizzardLogger::ADD_NODE
             # data nodes aren't actually serializable yet
-            #add_node log_line_words[1], 
-            #  {:host => log_line_words[2], :port => log_line_words[3]}
+            add_node(log_line_words[1], Marshal.load(queue_value))
           elsif operation_type == BlizzardLogger::START_ENQUEUE
             start_enqueue queue_value, true
           elsif operation_type == BlizzardLogger::FINALIZE_ENQUEUE
@@ -57,7 +58,7 @@ module Blizzard
       
       #add a data node that the master can use
       def add_node(node_id, node, recovery_mode = false)
-        @logger.log_add_node(node_id, node) unless recovery_mode
+        @logger.log_add_node(node_id, Marshal.dump(node)) unless recovery_mode
         @data_nodes[node_id] = node
         @replicator.get_heartbeat(node)
       end
@@ -106,9 +107,7 @@ module Blizzard
       
       def abort_enqueue(hashed_value, recovery_mode = false)
         if @pending_enqueues.has_key?(hashed_value)
-          if !recovery_mode
-            @logger.log_enqueue_abort "enq" + hashed_value.to_s, hashed_value
-          end
+          @logger.log_enqueue_abort("enq" + hashed_value.to_s, hashed_value) unless recovery_mode
           @pending_enqueues.delete(hashed_value)
           @replicator.clear_replicas(hashed_value)
           # notify any nodes they can delete a waiting value
@@ -123,7 +122,7 @@ module Blizzard
       #initialize necessary replicas.
       def finalize_enqueue(hashed_value, recovery_mode = false)
         return false unless @pending_enqueues.has_key?(hashed_value)
-        @logger.log_enqueue_finalize "enq" + hashed_value.to_s, hashed_value unless recovery_mode
+        @logger.log_enqueue_finalize("enq" + hashed_value.to_s, hashed_value) unless recovery_mode
         
         @replicator.add_replica(hashed_value, @pending_enqueues[hashed_value])
         @replicator.replicate(hashed_value, @rep_thresh - 1)
@@ -139,7 +138,7 @@ module Blizzard
       def finalize_dequeue(hashed_value, recovery_mode = false)
         return false unless @pending_dequeues.has_key?(hashed_value)
         
-        @logger.log_dequeue_finalize "dq" + hashed_value.to_s, hashed_value unless recovery_mode
+        @logger.log_dequeue_finalize("dq" + hashed_value.to_s, hashed_value) unless recovery_mode
         @pending_dequeues.delete(hashed_value)
         # notify nodes about dequeue so they can remove the data at some point
         nodes_to_notify = @replicator.find_nodes(hashed_value)
