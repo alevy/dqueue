@@ -45,6 +45,7 @@ class EndToEndTest < Test::Unit::TestCase
     
     assert_equal("hello world", @@client.dist_dequeue)
     assert_equal(0, @@data_node1.data.size)
+    assert_equal(0, @@data_node2.data.size)
   end
 
 end
