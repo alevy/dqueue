@@ -6,8 +6,6 @@ module DQueue
   module Master
     class Master
       attr_reader :data_nodes
-      
-      attr_reader :data_nodes
 
       def initialize(rep_thresh = 3)
         @data_nodes = Hash.new
@@ -87,7 +85,7 @@ module DQueue
       def start_dequeue(hashed_value = @logical_queue.shift, recovery_mode = false)
         # generate unique client key and send it to nodes,
         # or an approach that results in something similar
-        return nil if hash_value == nil
+        return nil if hashed_value == nil
 
         @logger.log_dequeue_start "dq" + hashed_value.to_s, hashed_value unless recovery_mode
         @pending_dequeues[ hashed_value ] = true
@@ -127,7 +125,8 @@ module DQueue
         return false unless @pending_enqueues.has_key?(hashed_value)
         @logger.log_enqueue_finalize "enq" + hashed_value.to_s, hashed_value unless recovery_mode
         
-        @replicator.replicate(@pending_enqueues[hashed_value], @rep_thresh - 1)
+        @replicator.add_replica(hashed_value, @pending_enqueues[hashed_value])
+        @replicator.replicate(hashed_value, @rep_thresh - 1)
           
         @logical_queue << hashed_value
         @pending_enqueues.delete(hashed_value)
