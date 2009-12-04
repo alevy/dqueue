@@ -38,11 +38,8 @@ class EndToEndTest < Test::Unit::TestCase
     assert_equal(1, @@data_node.data.size)
     assert_equal("hello world", @@data_node.data.values[0])
     
-    puts @@master.logical_queue
-    
     assert_equal("hello world", @@client.dist_dequeue)
-    assert_equal(1, @@data_node.data.size)
-    assert_equal("hello world", @@data_node.data.values[0])
+    assert_equal(0, @@data_node.data.size)
   end
 
 end

@@ -102,7 +102,7 @@ module RPC
       if @allowed_calls.include?(method)
         obj.send(method, *args)
       else
-        return Exception.new("Method not allowed")
+        return Exception.new("Method #{method} not allowed")
       end
     end
     
