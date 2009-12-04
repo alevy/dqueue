@@ -48,21 +48,18 @@ module Blizzard
     #replicate the given item ID on an additional node
     def replicate_once(item_id)
       current_nodes = find_nodes(item_id)
-      target_node = next_replica
-      while(current_nodes.include?(target_node)) do
-        target_node = next_replica
-      end
+      possible_nodes = @master.data_nodes.values.select {|n| not current_nodes.include?(n)}
+      target_node = possible_nodes[(rand * possible_nodes.size).floor]
       
-      target_node.add_data(item_id, current_nodes[0].get_data(item_id))
+      current_nodes[0].replicate_data(item_id, target_node)
       
       #TODO if the above line failed, re-start this method.
-        add_replica(item_id, target_node)
-      end
+      add_replica(item_id, target_node)
+    end
       
      #find all nodes this item ID is currently stored on
     def find_nodes(item_id)
       return @data_to_nodes[item_id]
-      
     end
     
     #choose the next node to replicate on

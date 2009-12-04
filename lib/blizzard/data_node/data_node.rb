@@ -27,6 +27,10 @@ module Blizzard
       def delete_data(key)
         @data.delete(key)
       end
+
+      def replicate_data(key, node)
+        node.add_data(key, @data[key])
+      end
       
       def send_heartbeat
         @master.get_heartbeat(self)
@@ -38,6 +42,9 @@ module Blizzard
       end
       
     end
+    
+    class DataNodeDummy < RPC::Dummy
+    end
 
     class MasterDummy < RPC::Dummy
       def add_node(id, node)
@@ -48,11 +55,17 @@ module Blizzard
         send_msg(:get_heartbeat, {:host => @localhost, :port => @localport})
       end
     end
-
+    
+    class DataNodeWrapper < RPC::Wrapper
+      def replicate_data(key, node)
+        obj.replicate_data(key, DataNodeDummy.new(RPC::Transport::TCPTransport.new, node[:host], node[:port]))
+      end
+    end
+    
     class DataNodeServer < RPC::Server
       
       def initialize(data_node, host, port, transport = RPC::Transport::TCPTransport.new)
-        wrapper = RPC::Wrapper.new(data_node, :add_data, :get_data, :delete_data)
+        wrapper = DataNodeWrapper.new(data_node, :add_data, :get_data, :delete_data, :replicate_data)
         super(transport, wrapper, host, port)
       end
       

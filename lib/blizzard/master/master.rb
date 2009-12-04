@@ -156,12 +156,45 @@ module Blizzard
       end
       
     end
+    
+    class DataNodeDummy < RPC::Dummy
+      def replicate_data(key, node)
+        send_msg(:replicate_data, key, {:host => node.host, :port => node.port})
+      end
+    end
+
+    class MasterWrapper < RPC::Wrapper
+
+      def initialize(master)
+        super(master, :add_node, :start_enqueue, :start_dequeue,
+                  :finalize_enqueue, :finalize_dequeue, :abort_dequeue, :abort_enqueue)
+        @master = master
+      end
+
+      def add_node(id, node)
+        @master.add_node(id, DataNodeDummy.new(RPC::Transport::TCPTransport.new, node[:host], node[:port]))
+      end
+
+      def get_heartbeat(node)
+        @master.get_heartbeat(DataNodeDummy.new(RPC::Transport::TCPTransport.new, node[:host], node[:port]))
+      end
+
+      def start_enqueue
+        id, nodes = @master.start_enqueue
+        return [id, nodes.map {|n| {:host => n.host, :port => n.port}}]
+      end
+
+      def start_dequeue
+        id, nodes = @master.start_dequeue
+        return [id, nodes.map {|n| {:host => n.host, :port => n.port}}]
+      end
+
+    end
 
     class MasterServer < RPC::Server
 
       def initialize(master, host, port, transport = RPC::Transport::UDPTransport.new)
-        wrapper = RPC::Wrapper.new(master, :add_node, :start_enqueue, :start_dequeue,
-                  :finalize_enqueue, :finalize_dequeue, :abort_dequeue, :abort_enqueue)
+        wrapper = MasterWrapper.new(master)
         super(transport, wrapper, host, port)
       end
       
