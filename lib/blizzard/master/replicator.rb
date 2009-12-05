@@ -2,13 +2,14 @@ module Blizzard
   module Master
      class Replicator
     
-      attr_reader :rep_thresh
+      attr_reader :rep_thresh, :heartbeats
       
       def initialize(master, logger)
           @data_to_nodes = Hash.new
           @nodes_to_data = Hash.new
           @master = master
           @heartbeats = Hash.new
+          @logger = logger
       end
       
       def start
@@ -44,10 +45,10 @@ module Blizzard
       end
         
       def check_heartbeats
-        puts "checking heartbeats..."
+        $stderr.puts "checking heartbeats..."
         @heartbeats.each do |node, value|
           if Time.now - value > 10
-            puts "replicating node!"
+            $stderr.puts "replicating node!"
             @master.remove_node(node)
             
             data = get_data_list(node)
@@ -60,7 +61,7 @@ module Blizzard
              
             replicate_node(node)
             @heartbeats.delete(node)
-            puts "successfully replicated node"
+            $stderr.puts "successfully replicated node"
           end
         end
       end

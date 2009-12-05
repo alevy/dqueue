@@ -4,7 +4,9 @@ require 'timeout'
 module RPC
   module Transport
     class UDPTransport
-    
+      
+      attr_reader :host, :port
+      
       UDP_RECV_TIMEOUT = 3
       
       def initialize(hash = {})
@@ -12,9 +14,10 @@ module RPC
         @serializer = hash[:serializer] || Marshal
       end
       
-      def bind(address, port)
+      def bind(host, port)
         @socket = UDPSocket.new
-        @socket.bind(address, port)
+        @socket.bind(host, port)
+        @host, @port = host, port
       end
 
       def close
@@ -31,9 +34,9 @@ module RPC
         end
       end
       
-      def send_msg(address, port, msg, *args)
+      def send_msg(host, port, msg, *args)
         socket = @socket || UDPSocket.new
-        socket.send(@serializer.dump([msg,args]), 0, address, port)
+        socket.send(@serializer.dump([msg,args]), 0, host, port)
         resp = timeout(@timeout) do
           socket.recvfrom(2024)
         end
@@ -45,6 +48,8 @@ module RPC
     
     class TCPTransport
     
+      attr_reader :host, :port
+      
       TCP_RECV_TIMEOUT = 3
       
       def initialize(hash = {})
@@ -52,8 +57,9 @@ module RPC
         @serializer = hash[:serializer] || Marshal
       end
       
-      def bind(address, port)
-        @socket = TCPServer.new(address, port)
+      def bind(host, port)
+        @socket = TCPServer.new(host, port)
+        @host, @port = host, port
       end
 
       def close
@@ -72,8 +78,8 @@ module RPC
         session.close
       end
       
-      def send_msg(address, port, msg, *args)
-        socket = TCPSocket.new(address, port)
+      def send_msg(host, port, msg, *args)
+        socket = TCPSocket.new(host, port)
         socket.write(@serializer.dump([msg,args]))
         socket.close_write
         resp = timeout(@timeout) do
@@ -85,7 +91,6 @@ module RPC
         return result
       end
     end
-
   end
   
   class Wrapper
@@ -126,6 +131,14 @@ module RPC
     
     def send_msg(method, *args)
       transport.send_msg(host, port, method, *args)
+    end
+    
+    def hash
+      "#{@host}:#{@port}".hash
+    end
+    
+    def eql?(o)
+        o.host == @host and o.port == @port
     end
   end
   
