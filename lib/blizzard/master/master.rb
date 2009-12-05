@@ -35,11 +35,16 @@ module Blizzard
           # TODO bad style for tightly integrating the 
           # logger and master... can change later
           operation_type = log_line_words[0]
-          queue_value = log_line_words[2]
+          
+          if log_line_words.size > 2
+            queue_value = log_line_words[2]
+          end
           
           if operation_type == BlizzardLogger::ADD_NODE
             # data nodes aren't actually serializable yet
-            add_node(log_line_words[1], Marshal.load(queue_value))
+            add_node(log_line_words[1], Marshal.load(queue_value), true)
+          elsif operation_type == BlizzardLogger::REMOVE_NODE
+            remove_node(Marshal.load(log_line_words[1]), true)
           elsif operation_type == BlizzardLogger::START_ENQUEUE
             start_enqueue queue_value, true
           elsif operation_type == BlizzardLogger::FINALIZE_ENQUEUE
@@ -54,6 +59,8 @@ module Blizzard
             abort_dequeue queue_value, true
           end
         end
+        
+        @replicator.recover_from_log(log_file)
       end
       
       #add a data node that the master can use
@@ -64,7 +71,8 @@ module Blizzard
       end
       
       #remove a node
-      def remove_node(node)
+      def remove_node(node, recovery_mode = false)
+        @logger.log_remove_node(Marshal.dump(node)) unless recovery_mode
         @data_nodes.delete(@data_nodes.index(node))
       end
       
@@ -86,7 +94,7 @@ module Blizzard
       def start_dequeue(hashed_value = @logical_queue.shift, recovery_mode = false)
         # generate unique client key and send it to nodes,
         # or an approach that results in something similar
-        return nil if hashed_value == nil
+        return nil if hashed_value.nil?
 
         @logger.log_dequeue_start "dq" + hashed_value.to_s, hashed_value unless recovery_mode
         @pending_dequeues[ hashed_value ] = true
@@ -96,7 +104,7 @@ module Blizzard
       
       def abort_dequeue(hashed_value, recovery_mode = false)
         if @pending_dequeues.has_key? hashed_value
-          @logger.log_dequeue_abort "dq" + hashed_value.to_s, hashed_value unless recovery_mode
+          @logger.log_dequeue_abort("dq" + hashed_value.to_s, hashed_value unless recovery_mode)
           @logical_queue.unshift(hashed_value)
           @pending_dequeues.delete hashed_value
           return true

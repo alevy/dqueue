@@ -14,6 +14,24 @@ module Blizzard
           Thread.new{while true do sleep 10; check_heartbeats; end}
       end
       
+      def recover_from_log(log_file)
+        log_file.each do |log_line|
+          log_line_words = log_line.split(Logger::DELIMITER)
+          
+          operation_type = log_line_words[0]
+          
+          if operation_type == BlizzardLogger::REMOVE_NODE_TO_DATA
+            @nodes_to_data.delete(Marshal.load(log_line_words[1]))
+          elsif operation_type == BlizzardLogger::REMOVE_DATA_TO_NODE
+            @data_to_nodes[log_line_words[1]].delete(Marshal.load(log_line_words[2]))
+          elsif operation_type == BlizzardLogger::ADD_REPLICA
+            add_replica(log_line_words[1], Marshal.load(log_line_words[2]), true)
+          elsif operation_type == BlizzardLogger::CLEAR_REPLICAS
+            clear_replicas(log_line_words[1], true)
+          end
+        end
+      end
+      
       def get_heartbeat(node)
         @heartbeats[node] = Time.now
       end
@@ -27,10 +45,10 @@ module Blizzard
             
             data = get_data_list(node)
             data.each do |element|
-              # TODO log
+              @logger.log_remove_data_to_node(element, Marshal.dump(node))
               @data_to_nodes[element].delete(node)
             end
-            # TODO log
+            @logger.log_remove_node_to_data(Marshal.dump(node))
             @nodes_to_data.delete(node)
              
             replicate_node(node)
@@ -85,33 +103,29 @@ module Blizzard
     end
     
     #mark this item as stored at this node
-    def add_replica(item_id, target_node)
+    def add_replica(item_id, target_node, recovery_mode = false)
+      @logger.log_add_replica(item_id, Marshal.dump(target_node)) unless recovery_mode
       if @nodes_to_data[target_node].nil?
-        # TODO log
         @nodes_to_data[target_node] = [item_id]
       else
-        # TODO log
         @nodes_to_data[target_node] = @nodes_to_data[target_node] << item_id
       end
       
       if @data_to_nodes[item_id].nil?
-        # TODO log
         @data_to_nodes[item_id] = [target_node]
       else
-        # TODO log
         @data_to_nodes[item_id] = @data_to_nodes[item_id] << target_node
       end
     end
     
     #remove the metadata info about this item, it's no longer
     #needed.
-      def clear_replicas(item_id)
+      def clear_replicas(item_id, recovery_mode = false)
+        @logger.log_clear_replicas(item_id) unless recovery_mode
         nodes = find_nodes(item_id)
         nodes.each do |node|
-          # TODO log
           @nodes_to_data[node].delete(item_id)
         end
-          # TODO log
           @data_to_nodes.delete(item_id)
       end
     end
