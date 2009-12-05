@@ -5,9 +5,9 @@ require 'blizzard/blizzard_logger'
 module Blizzard
   module Master
     class Master
-      attr_reader :data_nodes
+      attr_reader :data_nodes, :logger, :replicator
 
-      def initialize(rep_thresh = 3)
+      def initialize(logger = BlizzardLogger.new, rep_thresh = 3)
         @data_nodes = Hash.new
         @unique_id = 0
         @logical_queue = Array.new 
@@ -15,7 +15,7 @@ module Blizzard
         @pending_dequeues = Hash.new
         @replicator = Replicator.new(self)
         @rep_thresh = rep_thresh
-        @logger = BlizzardLogger.new
+        @logger = logger
         
       end
       

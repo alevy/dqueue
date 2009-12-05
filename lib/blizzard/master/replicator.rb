@@ -9,8 +9,16 @@ module Blizzard
           @nodes_to_data = Hash.new
           @master = master
           @heartbeats = Hash.new
-          Thread.abort_on_exception = true
-          Thread.new{while true do sleep 10; check_heartbeats; end}
+      end
+      
+      def start
+        Thread.abort_on_exception = true
+        Thread.new do
+          while true do
+            sleep 10
+            check_heartbeats
+          end
+        end
       end
       
         def get_heartbeat(node)
