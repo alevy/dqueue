@@ -5,7 +5,7 @@ module RPC
   module Transport
     class UDPTransport
     
-      UDP_RECV_TIMEOUT = 3
+      UDP_RECV_TIMEOUT = 10
       
       def initialize(hash = {})
         @timeout = hash[:timeout] || UDP_RECV_TIMEOUT

@@ -32,6 +32,10 @@ module Blizzard
         node.add_data(key, @data[key])
       end
       
+      def set_master(master)
+        @master = master
+      end
+      
       def send_heartbeat
         @master.get_heartbeat(self)
       end
