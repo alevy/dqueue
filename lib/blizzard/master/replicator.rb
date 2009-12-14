@@ -23,8 +23,8 @@ module Blizzard
       end
       
       def recover_from_log(log_file)
-        log_file.each do |log_line|
-          log_line_words = log_line.split(Logger::DELIMITER)
+        log_file.each(BlizzardLogger::ENDLINE) do |log_line|
+          log_line_words = log_line.split(BlizzardLogger::DELIMITER)
           
           operation_type = log_line_words[0]
           
@@ -32,10 +32,6 @@ module Blizzard
             @nodes_to_data.delete(Marshal.load(log_line_words[1]))
           elsif operation_type == BlizzardLogger::REMOVE_DATA_TO_NODE
             @data_to_nodes[log_line_words[1]].delete(Marshal.load(log_line_words[2]))
-          elsif operation_type == BlizzardLogger::ADD_REPLICA
-            add_replica(log_line_words[1], Marshal.load(log_line_words[2]), true)
-          elsif operation_type == BlizzardLogger::CLEAR_REPLICAS
-            clear_replicas(log_line_words[1], true)
           end
         end
       end
@@ -77,7 +73,9 @@ module Blizzard
       possible_nodes = @master.data_nodes.values.select {|n| not current_nodes.include?(n)}
       target_node = possible_nodes[(rand * possible_nodes.size).floor]
       
-      current_nodes[0].replicate_data(item_id, target_node)
+      begin
+        current_nodes[0].replicate_data(item_id, target_node)
+      end
       
       #TODO if the above line failed, re-start this method.
       add_replica(item_id, target_node)
@@ -112,7 +110,7 @@ module Blizzard
     
     #mark this item as stored at this node
     def add_replica(item_id, target_node, recovery_mode = false)
-      @logger.log_add_replica(item_id, Marshal.dump(target_node)) unless recovery_mode
+#      @logger.log_add_replica(item_id, Marshal.dump(target_node)) unless recovery_mode
       if @nodes_to_data[target_node].nil?
         @nodes_to_data[target_node] = [item_id]
       else
@@ -129,7 +127,7 @@ module Blizzard
     #remove the metadata info about this item, it's no longer
     #needed.
       def clear_replicas(item_id, recovery_mode = false)
-        @logger.log_clear_replicas(item_id) unless recovery_mode
+#        @logger.log_clear_replicas(item_id) unless recovery_mode
         nodes = find_nodes(item_id)
         nodes.each do |node|
           @nodes_to_data[node].delete(item_id)

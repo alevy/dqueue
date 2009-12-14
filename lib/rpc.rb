@@ -4,7 +4,6 @@ require 'timeout'
 module RPC
   module Transport
     class UDPTransport
-      
       attr_reader :host, :port
       
       UDP_RECV_TIMEOUT = 3

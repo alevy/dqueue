@@ -1,3 +1,5 @@
+require 'fileutils'
+
 module Blizzard
   class BlizzardLogger
     @@log_file_name = "/dev/null"#operation_log"
@@ -16,16 +18,23 @@ module Blizzard
     FINALIZE_DEQUEUE = "FINALIZE_DEQUEUE"
     ABORT_DEQUEUE = "ABORT_DEQUEUE"
     DELIMITER = "|"
+    ENDLINE = "<end_log_line>"
     
     def initialize
-      @log_file = File.new(@@log_file_name, "a+")
+      open_log_file
   
     end
     
+    def clear_log
+      @log_file.close
+      File.new(@@log_file_name, "w").close
+      open_log_file
+    end
     # TODO checkpoints, streamline
     
     def get_log_file
-      File.copy(@@log_file_name, @@recovery_log_file_name)
+      return nil unless File.exists?(@@log_file_name)
+      FileUtils.cp(@@log_file_name, @@recovery_log_file_name)
       return File.new(@@recovery_log_file_name, "r")
     end
     
@@ -81,11 +90,19 @@ module Blizzard
       
     private
     def log(operation_type, message)
-      @log_file.puts(operation_type.to_s + DELIMITER + message)
+      @log_file.write(operation_type.to_s + 
+        DELIMITER + 
+        message + 
+        ENDLINE)
+      @log_file.flush
     end
     
     def log_queue_operation(operation_type, operation_id, value)
       log operation_type, operation_id.to_s + DELIMITER + value.to_s
+    end
+    
+    def open_log_file
+      @log_file = File.new(@@log_file_name, "a+")
     end
   end
 end

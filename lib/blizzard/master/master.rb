@@ -6,6 +6,7 @@ module Blizzard
   module Master
     class Master
       attr_reader :data_nodes, :logger, :replicator
+      PENDING_TIMEOUT = 60 #in seconds
 
       def initialize(logger = BlizzardLogger.new, rep_thresh = 3)
         @data_nodes = Hash.new
@@ -16,19 +17,45 @@ module Blizzard
         @rep_thresh = rep_thresh
         @logger = logger
         @replicator = Replicator.new(self, @logger)
-        #recover_from_log
+        recover_from_log
+        
+        Thread.abort_on_exception = true
+        Thread.new{while true do sleep PENDING_TIMEOUT; check_pending; end}
       end
       
       def get_heartbeat(node)
         @replicator.get_heartbeat(node)
       end
+      
+      def check_pending
+        time = Time.now
+        @pending_enqueues.each do |key, value|
+          if time - value[1] > PENDING_TIMEOUT
+            abort_enqueue(key)
+          end
+        end
+        
+        @pending_dequeues.each do |key, value|
+          if time - value > PENDING_TIMEOUT
+            abort_dequeue(key)
+          end
+        end
+        
+      end
     
       
       def recover_from_log
         log_file = @logger.get_log_file
+#        puts "recovering..."
+        return unless !log_file.nil?
+
+        @replicator.recover_from_log(log_file)
         
-        log_file.each do |log_line|
-          log_line_words = log_line.split(Logger::DELIMITER)
+#        puts "more recovering..."
+        log_file.rewind
+        log_file.each(BlizzardLogger::ENDLINE) do |log_line|
+          log_line_chomped = log_line.chomp(BlizzardLogger::ENDLINE)
+          log_line_words = log_line_chomped.split(BlizzardLogger::DELIMITER)
           
           # TODO bad style for tightly integrating the 
           # logger and master... can change later
@@ -58,7 +85,6 @@ module Blizzard
           end
         end
         
-        @replicator.recover_from_log(log_file)
       end
       
       #add a data node that the master can use
@@ -79,11 +105,12 @@ module Blizzard
       def start_enqueue(hashed_value = @unique_id, recovery_mode = false)
         # generate unique client key and send it to nodes,
         # or an approach that results in something similar
-        @unique_id = [@unique_id + 1, hashed_value + 1].max
+        hashed_value = hashed_value.to_s
+        @unique_id = [@unique_id + 1, hashed_value.to_i + 1].max
         @logger.log_enqueue_start("enq" + hashed_value.to_s, hashed_value) unless recovery_mode
-        @pending_enqueues[hashed_value] = true
-        nodes_to_contact = get_nodes_to_store hashed_value
-        @pending_enqueues[ hashed_value ] = nodes_to_contact[0]
+      #  @pending_enqueues[hashed_value] = true
+        nodes_to_contact = get_nodes_to_store(hashed_value)
+        @pending_enqueues[ hashed_value ] = [nodes_to_contact[0], Time.now]
         return [hashed_value, nodes_to_contact]
       end
     
@@ -94,8 +121,8 @@ module Blizzard
         # or an approach that results in something similar
         return nil if hashed_value.nil?
 
-        @logger.log_dequeue_start "dq" + hashed_value.to_s, hashed_value unless recovery_mode
-        @pending_dequeues[ hashed_value ] = true
+        @logger.log_dequeue_start("dq" + hashed_value.to_s, hashed_value) unless recovery_mode
+        @pending_dequeues[ hashed_value ] = Time.now
         nodes_to_contact = @replicator.find_nodes(hashed_value)
         return [hashed_value, nodes_to_contact]
       end
@@ -130,7 +157,7 @@ module Blizzard
         return false unless @pending_enqueues.has_key?(hashed_value)
         @logger.log_enqueue_finalize("enq" + hashed_value.to_s, hashed_value) unless recovery_mode
         
-        @replicator.add_replica(hashed_value, @pending_enqueues[hashed_value])
+        @replicator.add_replica(hashed_value, (@pending_enqueues[hashed_value])[0])
         @replicator.replicate(hashed_value, @rep_thresh - 1)
           
         @logical_queue << hashed_value
@@ -149,7 +176,9 @@ module Blizzard
         # notify nodes about dequeue so they can remove the data at some point
         nodes_to_notify = @replicator.find_nodes(hashed_value)
         nodes_to_notify.each do |current_node|
-          current_node.delete_data(hashed_value)
+          begin
+            current_node.delete_data(hashed_value)
+          end
         end
         @replicator.clear_replicas(hashed_value)
         return true
@@ -159,6 +188,10 @@ module Blizzard
           # look up nodes which store data associated with the given hash
           #currently returns a single random node
           return [@data_nodes[@data_nodes.keys[(rand * @data_nodes.size).floor]]]
+      end
+      
+      def clear_log
+        @logger.clear_log
       end
       
     end
@@ -193,6 +226,11 @@ module Blizzard
       def start_dequeue
         id, nodes = @master.start_dequeue
         return nil if nodes.nil?
+        
+        if nodes.nil?
+          return [id, nodes]
+        end
+        
         return [id, nodes.map {|n| {:host => n.host, :port => n.port}}]
       end
 
