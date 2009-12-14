@@ -1,6 +1,6 @@
 module Blizzard
   class BlizzardLogger
-    @@log_file_name = "operation_log"
+    @@log_file_name = "/dev/null"#operation_log"
     @@recovery_log_file_name = @@log_file_name + ".tmp"
   
     ADD_NODE = "ADD_NODE"

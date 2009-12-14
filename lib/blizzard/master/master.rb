@@ -192,6 +192,7 @@ module Blizzard
 
       def start_dequeue
         id, nodes = @master.start_dequeue
+        return nil if nodes.nil?
         return [id, nodes.map {|n| {:host => n.host, :port => n.port}}]
       end
 
